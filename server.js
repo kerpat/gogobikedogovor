@@ -693,9 +693,6 @@ async function handleUnbindPaymentMethod({ userId }) {
 
     return { status: 200, body: { message: 'Способ оплаты успешно отвязан.' } };
 }
-// НОВЫЙ ОБРАБОТЧИК ДЛЯ АДМИН-ПАНЕЛИ
-// +++ ВСТАВИТЬ ЭТОТ БЛОК КОДА В server.js +++
-
 /**
  * Устанавливает статус верификации для клиента и отправляет уведомление.
  */
@@ -710,31 +707,33 @@ async function handleSetVerificationStatus({ userId, status }) {
     const supabaseAdmin = createSupabaseAdmin();
 
     // 1. Обновляем статус клиента в базе
-    const { error: updateError } = await supabaseAdmin
-        .from('clients')
-        .update({ verification_status: status })
-        .eq('id', userId);
-
-    if (updateError) {
-        throw new Error('Не удалось обновить статус клиента: ' + updateError.message);
-    }
+    // ЭТО ДЕЙСТВИЕ УЖЕ ВЫПОЛНЯЕТСЯ В ADMIN.JS, ЗДЕСЬ ОНО НЕ НУЖНО
+    // const { error: updateError } = await supabaseAdmin
+    //     .from('clients')
+    //     .update({ verification_status: status })
+    //     .eq('id', userId);
+    // if (updateError) {
+    //     throw new Error('Не удалось обновить статус клиента: ' + updateError.message);
+    // }
 
     // 2. Получаем telegram_user_id для отправки сообщения
     const { data: client, error: fetchError } = await supabaseAdmin
         .from('clients')
-        .select('telegram_user_id, extra')
+        .select('telegram_user_id') // Запрашиваем только telegram_user_id
         .eq('id', userId)
         .single();
 
-    if (fetchError || !client) {
-        console.warn(`Не удалось найти клиента ${userId} для отправки уведомления.`);
+    if (fetchError || !client || !client.telegram_user_id) {
+        console.warn(`Не удалось найти клиента ${userId} или его telegram_user_id для отправки уведомления.`);
         return { status: 200, body: { message: 'Статус обновлен, но уведомление не отправлено (клиент не найден).' } };
     }
 
+    const telegramUserId = client.telegram_user_id;
+
     // 3. Формируем текст сообщения и ссылку для Web App
     let messageText = '';
-    const botUsername = 'gogobikebot'; // <-- УКАЖИТЕ ИМЯ ВАШЕГО БОТА
-    const webAppName = 'app'; // <-- УКАЖИТЕ КОРОТКОЕ ИМЯ ВАШЕГО WEB APP
+    const botUsername = process.env.BOT_USERNAME || 'gogobikebot';
+    const webAppName = process.env.WEBAPP_NAME || 'app';
     const webAppUrl = `https://t.me/${botUsername}/${webAppName}`;
 
     if (status === 'approved') {
@@ -744,10 +743,9 @@ async function handleSetVerificationStatus({ userId, status }) {
     }
 
     // 4. Отправляем уведомление
-    // (Убедитесь, что функция sendTelegramNotification уже есть в вашем файле)
-    await sendTelegramNotification(client.telegram_user_id, messageText, webAppUrl);
+    await sendTelegramNotification(telegramUserId, messageText, webAppUrl);
 
-    return { status: 200, body: { message: 'Статус успешно обновлен, уведомление отправлено.' } };
+    return { status: 200, body: { message: 'Запрос на уведомление обработан.' } };
 }
 app.post('/api/admin', async (req, res) => {
     try {
@@ -759,14 +757,14 @@ app.post('/api/admin', async (req, res) => {
             case 'finalize-return':
                 result = await handleFinalizeReturn(body);
                 break;
-            // --- ЗАМЕНЯЕМ set-verification-status НА notify-verification ---
+            // --- УБЕДИСЬ, ЧТО ЭТИ ДВЕ СТРОКИ ЕСТЬ ---
             case 'notify-verification':
-                result = await handleNotifyVerification(body);
+                result = await handleSetVerificationStatus(body); // Используем ИСПРАВЛЕННУЮ функцию
                 break;
-            // --- ДОБАВЛЯЕМ НОВЫЙ ОБРАБОТЧИК ---
             case 'notify-battery-assignment':
-                result = await handleNotifyBatteryAssignment(body);
+                result = await handleNotifyBatteryAssignment(body); // Используем НОВУЮ функцию
                 break;
+            // --- КОНЕЦ ПРОВЕРКИ ---
             default:
                 result = { status: 400, body: { error: 'Invalid admin action' } };
                 break;
@@ -826,40 +824,6 @@ app.post('/api/user', async (req, res) => {
     }
 });
 
-// +++ ВСТАВЬ ЭТИ ДВЕ ФУНКЦИИ В server.js +++
-
-/**
- * Отправляет уведомление о смене статуса верификации.
- */
-async function handleNotifyVerification({ userId, status }) {
-    if (!userId || !status) {
-        return { status: 400, body: { error: 'userId и status обязательны.' } };
-    }
-
-    const supabaseAdmin = createSupabaseAdmin();
-    const { data: client } = await supabaseAdmin.from('clients').select('telegram_user_id').eq('id', userId).single();
-
-    if (client?.telegram_user_id) {
-        let messageText = '';
-        const botUsername = process.env.BOT_USERNAME || 'gogobikebot';
-        const webAppName = process.env.WEBAPP_NAME || 'app';
-        const webAppUrl = `https://t.me/${botUsername}/${webAppName}`;
-
-        if (status === 'approved') {
-            messageText = '✅ Поздравляем! Ваш аккаунт был подтвержден. Теперь вы можете полноценно пользоваться приложением.';
-        } else if (status === 'rejected') {
-            messageText = '❌ К сожалению, в верификации было отказано. Для уточнения деталей свяжитесь с поддержкой.';
-        }
-
-        if (messageText) {
-            // Кнопка для этого уведомления не ведет в конкретный раздел, поэтому URL простой
-            await sendTelegramNotification(client.telegram_user_id, messageText, webAppUrl);
-        }
-    }
-
-    // Возвращаем успех, даже если уведомление не отправилось, чтобы не показывать ошибку в админке
-    return { status: 200, body: { message: 'Запрос на уведомление обработан.' } };
-}
 
 /**
  * Отправляет уведомление о том, что АКБ выбраны и нужно подписать договор.
