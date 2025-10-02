@@ -198,9 +198,9 @@ function generateContractHTML(rentalData) {
         }
     }
 
-    const batteryNumbers = Array.isArray(bike?.battery_numbers)
-        ? bike.battery_numbers.join(', ')
-        : (bike?.battery_numbers || 'N/A');
+    const batteryNumbers = rentalData.rental_batteries && rentalData.rental_batteries.length > 0
+        ? rentalData.rental_batteries.map(rb => rb.batteries.serial_number).join(', ')
+        : (Array.isArray(bike?.battery_numbers) ? bike.battery_numbers.join(', ') : (bike?.battery_numbers || 'N/A'));
 
     return `
         <div style="text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 20px;">
@@ -371,9 +371,9 @@ function generateReturnActHTML(rentalData, defects = [], clientSignatureData = n
         }
     }
 
-    const batteryNumbers = Array.isArray(bike?.battery_numbers)
-        ? bike.battery_numbers.join(', ')
-        : (bike?.battery_numbers || 'N/A');
+    const batteryNumbers = rentalData.rental_batteries && rentalData.rental_batteries.length > 0
+        ? rentalData.rental_batteries.map(rb => rb.batteries.serial_number).join(', ')
+        : (Array.isArray(bike?.battery_numbers) ? bike.battery_numbers.join(', ') : (bike?.battery_numbers || 'N/A'));
 
     const defectsHTML = defects && defects.length > 0
         ? `
