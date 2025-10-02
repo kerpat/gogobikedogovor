@@ -467,8 +467,7 @@ async function handleGenerateReturnAct({ userId, rentalId }) {
     try {
         const { data: rentalData, error: rentalError } = await supabaseAdmin
             .from('rentals')
-            // ИЗМЕНЕНИЕ: Добавляем recognized_passport_data в запрос
-            .select('extra_data, clients ( name, city, recognized_passport_data ), bikes ( * )')
+            .select('extra_data, clients ( name, city, recognized_passport_data ), bikes ( * ), rental_batteries(batteries(serial_number))')
             .eq('id', rentalId)
             .eq('user_id', userId)
             .single();
@@ -521,8 +520,7 @@ async function handleConfirmReturnAct({ userId, rentalId, signatureData }) {
     try {
         const { data: rentalData, error: rentalError } = await supabaseAdmin
             .from('rentals')
-            // ИЗМЕНЕНИЕ 1: Добавляем bike_id и recognized_passport_data в запрос
-            .select('bike_id, extra_data, clients ( name, city, recognized_passport_data ), bikes ( * )')
+            .select('bike_id, extra_data, clients ( name, city, recognized_passport_data ), bikes ( * ), rental_batteries(batteries(serial_number))')
             .eq('id', rentalId)
             .eq('user_id', userId)
             .single();
