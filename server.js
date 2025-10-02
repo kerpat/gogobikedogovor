@@ -30,6 +30,8 @@ function parseRequestBody(body) {
     return body;
 }
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN; // Загружаем токен из переменных окружения
+const BOT_USERNAME = process.env.BOT_USERNAME || 'gogobikebot'; // Имя пользователя бота
+const WEBAPP_SHORT_NAME = process.env.WEBAPP_NAME || 'app'; // Короткое имя Web App
 
 /**
  * Отправляет уведомление в Telegram с кнопкой-ссылкой на Web App.
@@ -643,10 +645,7 @@ async function handleFinalizeReturn({ rental_id, new_bike_status, service_reason
     // --- НОВЫЙ БЛОК: ОТПРАВКА УВЕДОМЛЕНИЯ В TELEGRAM ---
     const messageText = 'Пожалуйста, подпишите акт сдачи электровелосипеда в личном кабинете, чтобы завершить аренду.';
 
-    // ВАЖНО: Замените YOUR_BOT_USERNAME и YOUR_WEBAPP_SHORT_NAME на свои значения
-    // Имя пользователя бота - это то, что вы задали в BotFather (например, MySuperBikeBot)
-    // Короткое имя Web App - это то, что вы задали для кнопки Menu (например, app)
-    const webAppUrl = 'https://t.me/YOUR_BOT_USERNAME/YOUR_WEBAPP_SHORT_NAME?startapp=notifications';
+    const webAppUrl = `https://t.me/${BOT_USERNAME}/${WEBAPP_SHORT_NAME}?startapp=notifications`;
 
     await sendTelegramNotification(telegramUserId, messageText, webAppUrl);
     // --- КОНЕЦ НОВОГО БЛОКА ---
@@ -732,9 +731,7 @@ async function handleSetVerificationStatus({ userId, status }) {
 
     // 3. Формируем текст сообщения и ссылку для Web App
     let messageText = '';
-    const botUsername = process.env.BOT_USERNAME || 'gogobikebot';
-    const webAppName = process.env.WEBAPP_NAME || 'app';
-    const webAppUrl = `https://t.me/${botUsername}/${webAppName}`;
+    const webAppUrl = `https://t.me/${BOT_USERNAME}/${WEBAPP_SHORT_NAME}`;
 
     if (status === 'approved') {
         messageText = '✅ Поздравляем! Ваш аккаунт был подтвержден. Теперь вы можете полноценно пользоваться приложением.';
@@ -838,9 +835,7 @@ async function handleNotifyBatteryAssignment({ rentalId }) {
 
     if (rental?.clients?.telegram_user_id) {
         const messageText = '✅ Ваше оборудование готово! Пожалуйста, подпишите договор, чтобы начать аренду.';
-        const botUsername = process.env.BOT_USERNAME || 'gogobikebot';
-        const webAppName = process.env.WEBAPP_NAME || 'app';
-        const webAppUrl = `https://t.me/${botUsername}/${webAppName}?startapp=notifications`; // Deeplink в уведомления
+        const webAppUrl = `https://t.me/${BOT_USERNAME}/${WEBAPP_SHORT_NAME}?startapp=notifications`; // Deeplink в уведомления
 
         await sendTelegramNotification(rental.clients.telegram_user_id, messageText, webAppUrl);
     }
