@@ -827,13 +827,39 @@ async function handleNotifyBatteryAssignment({ rentalId }) {
     }
 
     const supabaseAdmin = createSupabaseAdmin();
-    const { data: rental } = await supabaseAdmin
+
+    // --- ИСПРАВЛЕНИЕ ЗДЕСЬ ---
+
+    // 1. Сначала получаем ID клиента (user_id) из самой аренды.
+    const { data: rental, error: rentalError } = await supabaseAdmin
         .from('rentals')
-        .select('clients(extra)')
+        .select('user_id') // Запрашиваем только ID пользователя
         .eq('id', rentalId)
         .single();
 
-    const telegramUserId = rental?.clients?.extra?.telegram_user_id;
+    if (rentalError || !rental || !rental.user_id) {
+        console.error(`Не удалось найти аренду ${rentalId} или user_id в ней.`);
+        // Возвращаем успех, т.к. с точки зрения админа действие выполнено, но логируем ошибку.
+        return { status: 200, body: { message: 'Запрос обработан, но аренда для уведомления не найдена.' } };
+    }
+
+    const userId = rental.user_id;
+
+    // 2. Теперь по ID клиента надежно получаем его данные, включая telegram_user_id.
+    const { data: client, error: clientError } = await supabaseAdmin
+        .from('clients')
+        .select('extra')
+        .eq('id', userId)
+        .single();
+
+    if (clientError || !client) {
+         console.error(`Не удалось найти клиента с ID ${userId} для отправки уведомления.`);
+         return { status: 200, body: { message: 'Запрос обработан, но клиент для уведомления не найден.' } };
+    }
+
+    const telegramUserId = client?.extra?.telegram_user_id;
+
+    // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     if (telegramUserId) {
         const messageText = '✅ Ваше оборудование готово! Пожалуйста, подпишите договор, чтобы начать аренду.';
