@@ -841,8 +841,8 @@ async function handleNotifyVerification({ userId, status }) {
 
     if (client?.telegram_user_id) {
         let messageText = '';
-        const botUsername = 'gogobikebot'; // <-- ИМЯ ТВОЕГО БОТА
-        const webAppName = 'app';          // <-- КОРОТКОЕ ИМЯ WEB APP
+        const botUsername = process.env.BOT_USERNAME || 'gogobikebot';
+        const webAppName = process.env.WEBAPP_NAME || 'app';
         const webAppUrl = `https://t.me/${botUsername}/${webAppName}`;
 
         if (status === 'approved') {
@@ -852,6 +852,7 @@ async function handleNotifyVerification({ userId, status }) {
         }
 
         if (messageText) {
+            // Кнопка для этого уведомления не ведет в конкретный раздел, поэтому URL простой
             await sendTelegramNotification(client.telegram_user_id, messageText, webAppUrl);
         }
     }
@@ -873,9 +874,9 @@ async function handleNotifyBatteryAssignment({ rentalId }) {
 
     if (rental?.clients?.telegram_user_id) {
         const messageText = '✅ Ваше оборудование готово! Пожалуйста, подпишите договор, чтобы начать аренду.';
-        const botUsername = 'gogobikebot'; // <-- ИМЯ ТВОЕГО БОТА
-        const webAppName = 'app';          // <-- КОРОТКОЕ ИМЯ WEB APP
-        const webAppUrl = `https://t.me/${botUsername}/${webAppName}?startapp=notifications`;
+        const botUsername = process.env.BOT_USERNAME || 'gogobikebot';
+        const webAppName = process.env.WEBAPP_NAME || 'app';
+        const webAppUrl = `https://t.me/${botUsername}/${webAppName}?startapp=notifications`; // Deeplink в уведомления
 
         await sendTelegramNotification(rental.clients.telegram_user_id, messageText, webAppUrl);
     }
