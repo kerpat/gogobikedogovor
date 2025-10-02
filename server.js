@@ -714,16 +714,16 @@ async function handleSetVerificationStatus({ userId, status }) {
     // 2. Получаем telegram_user_id для отправки сообщения
     const { data: client, error: fetchError } = await supabaseAdmin
         .from('clients')
-        .select('telegram_user_id') // Запрашиваем только telegram_user_id
+        .select('extra')
         .eq('id', userId)
         .single();
 
-    if (fetchError || !client || !client.telegram_user_id) {
+    const telegramUserId = client?.extra?.telegram_user_id;
+
+    if (fetchError || !client || !telegramUserId) {
         console.warn(`Не удалось найти клиента ${userId} или его telegram_user_id для отправки уведомления.`);
         return { status: 200, body: { message: 'Статус обновлен, но уведомление не отправлено (клиент не найден).' } };
     }
-
-    const telegramUserId = client.telegram_user_id;
 
     // 3. Формируем текст сообщения и ссылку для Web App
     let messageText = '';
@@ -827,13 +827,22 @@ async function handleNotifyBatteryAssignment({ rentalId }) {
     }
 
     const supabaseAdmin = createSupabaseAdmin();
-    const { data: rental } = await supabaseAdmin.from('rentals').select('clients(telegram_user_id)').eq('id', rentalId).single();
+    const { data: rental } = await supabaseAdmin
+        .from('rentals')
+        .select('clients(extra)')
+        .eq('id', rentalId)
+        .single();
 
-    if (rental?.clients?.telegram_user_id) {
+    const telegramUserId = rental?.clients?.extra?.telegram_user_id;
+
+    if (telegramUserId) {
         const messageText = '✅ Ваше оборудование готово! Пожалуйста, подпишите договор, чтобы начать аренду.';
         const webAppUrl = `https://t.me/${BOT_USERNAME}/${WEBAPP_SHORT_NAME}?startapp=notifications`; // Deeplink в уведомления
 
-        await sendTelegramNotification(rental.clients.telegram_user_id, messageText, webAppUrl);
+        await sendTelegramNotification(telegramUserId, messageText, webAppUrl);
+        console.log(`Уведомление об АКБ отправлено для аренды ${rentalId}`);
+    } else {
+        console.warn(`Не удалось отправить уведомление для аренды ${rentalId}: telegram_user_id не найден.`);
     }
 
     return { status: 200, body: { message: 'Запрос на уведомление обработан.' } };
