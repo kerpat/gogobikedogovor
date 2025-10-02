@@ -34,12 +34,12 @@ const BOT_USERNAME = process.env.BOT_USERNAME || 'gogobikebot'; // Имя пол
 const WEBAPP_SHORT_NAME = process.env.WEBAPP_NAME || 'app'; // Короткое имя Web App
 
 /**
- * Отправляет уведомление в Telegram с кнопкой-ссылкой на Web App.
+ * Отправляет текстовое уведомление в Telegram.
  * @param {string} chatId - ID чата с пользователем (его telegram_user_id).
  * @param {string} text - Текст сообщения.
- * @param {string} webAppUrl - Ссылка на Web App для кнопки.
+ * @param {string} webAppUrl - Не используется, оставлено для совместимости.
  */
-async function sendTelegramNotification(chatId, text, webAppUrl) {
+async function sendTelegramNotification(chatId, text, webAppUrl) { // webAppUrl теперь не используется, но оставим для совместимости
     if (!BOT_TOKEN) {
         console.error('Ошибка: TELEGRAM_BOT_TOKEN не установлен. Уведомление не отправлено.');
         return;
@@ -50,21 +50,15 @@ async function sendTelegramNotification(chatId, text, webAppUrl) {
     }
 
     const apiUrl = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+
+    // --- ИЗМЕНЕНИЕ: УБРАЛИ КНОПКУ ---
     const payload = {
         chat_id: chatId,
         text: text,
-        parse_mode: 'HTML', // Разрешаем использовать HTML-теги для форматирования
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    {
-                        text: '✍️ Открыть уведомления', // Текст на кнопке
-                        web_app: { url: webAppUrl } // Ссылка, которую откроет кнопка
-                    }
-                ]
-            ]
-        }
+        parse_mode: 'HTML'
+        // reply_markup БОЛЬШЕ НЕТ
     };
+    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
 
     try {
         const response = await fetch(apiUrl, {
@@ -75,6 +69,8 @@ async function sendTelegramNotification(chatId, text, webAppUrl) {
         const result = await response.json();
         if (!result.ok) {
             console.error('Ошибка отправки сообщения в Telegram:', result.description);
+        } else {
+            console.log(`Уведомление успешно отправлено в чат ${chatId}`);
         }
     } catch (error) {
         console.error('Сетевая ошибка при отправке сообщения в Telegram:', error);
