@@ -252,7 +252,8 @@ async function handleConfirmContract({ userId, rentalId, signatureData }) {
             .from('rentals')
             .select(`
                 clients ( name, city, recognized_passport_data ),
-                bikes ( model_name, frame_number, battery_numbers, registration_number, iot_device_id, additional_equipment )
+                bikes ( model_name, frame_number, battery_numbers, registration_number, iot_device_id, additional_equipment ),
+                rental_batteries ( batteries ( serial_number ) )
             `)
             .eq('id', rentalId)
             .eq('user_id', userId)
@@ -758,10 +759,14 @@ app.post('/api/admin', async (req, res) => {
             case 'finalize-return':
                 result = await handleFinalizeReturn(body);
                 break;
-            case 'set-verification-status':
-                result = await handleSetVerificationStatus(body);
+            // --- ЗАМЕНЯЕМ set-verification-status НА notify-verification ---
+            case 'notify-verification':
+                result = await handleNotifyVerification(body);
                 break;
-            // Здесь могут быть другие admin-действия в будущем
+            // --- ДОБАВЛЯЕМ НОВЫЙ ОБРАБОТЧИК ---
+            case 'notify-battery-assignment':
+                result = await handleNotifyBatteryAssignment(body);
+                break;
             default:
                 result = { status: 400, body: { error: 'Invalid admin action' } };
                 break;
@@ -820,6 +825,63 @@ app.post('/api/user', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// +++ ВСТАВЬ ЭТИ ДВЕ ФУНКЦИИ В server.js +++
+
+/**
+ * Отправляет уведомление о смене статуса верификации.
+ */
+async function handleNotifyVerification({ userId, status }) {
+    if (!userId || !status) {
+        return { status: 400, body: { error: 'userId и status обязательны.' } };
+    }
+
+    const supabaseAdmin = createSupabaseAdmin();
+    const { data: client } = await supabaseAdmin.from('clients').select('telegram_user_id').eq('id', userId).single();
+
+    if (client?.telegram_user_id) {
+        let messageText = '';
+        const botUsername = 'gogobikebot'; // <-- ИМЯ ТВОЕГО БОТА
+        const webAppName = 'app';          // <-- КОРОТКОЕ ИМЯ WEB APP
+        const webAppUrl = `https://t.me/${botUsername}/${webAppName}`;
+
+        if (status === 'approved') {
+            messageText = '✅ Поздравляем! Ваш аккаунт был подтвержден. Теперь вы можете полноценно пользоваться приложением.';
+        } else if (status === 'rejected') {
+            messageText = '❌ К сожалению, в верификации было отказано. Для уточнения деталей свяжитесь с поддержкой.';
+        }
+
+        if (messageText) {
+            await sendTelegramNotification(client.telegram_user_id, messageText, webAppUrl);
+        }
+    }
+
+    // Возвращаем успех, даже если уведомление не отправилось, чтобы не показывать ошибку в админке
+    return { status: 200, body: { message: 'Запрос на уведомление обработан.' } };
+}
+
+/**
+ * Отправляет уведомление о том, что АКБ выбраны и нужно подписать договор.
+ */
+async function handleNotifyBatteryAssignment({ rentalId }) {
+    if (!rentalId) {
+        return { status: 400, body: { error: 'rentalId обязателен.' } };
+    }
+
+    const supabaseAdmin = createSupabaseAdmin();
+    const { data: rental } = await supabaseAdmin.from('rentals').select('clients(telegram_user_id)').eq('id', rentalId).single();
+
+    if (rental?.clients?.telegram_user_id) {
+        const messageText = '✅ Ваше оборудование готово! Пожалуйста, подпишите договор, чтобы начать аренду.';
+        const botUsername = 'gogobikebot'; // <-- ИМЯ ТВОЕГО БОТА
+        const webAppName = 'app';          // <-- КОРОТКОЕ ИМЯ WEB APP
+        const webAppUrl = `https://t.me/${botUsername}/${webAppName}?startapp=notifications`;
+
+        await sendTelegramNotification(rental.clients.telegram_user_id, messageText, webAppUrl);
+    }
+
+    return { status: 200, body: { message: 'Запрос на уведомление обработан.' } };
+}
 
 app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
