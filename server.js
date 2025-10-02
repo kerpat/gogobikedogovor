@@ -145,7 +145,8 @@ async function handleGetContractDetails({ userId, rentalId }) {
             extra_data,
             clients ( name, city, recognized_passport_data ),
             tariffs ( title ),
-            bikes ( model_name, frame_number, battery_numbers, registration_number, iot_device_id, additional_equipment )
+            bikes ( model_name, frame_number, battery_numbers, registration_number, iot_device_id, additional_equipment ),
+            rental_batteries ( batteries ( serial_number ) )
         `)
         .eq('id', rentalId)
         .eq('user_id', userId)
