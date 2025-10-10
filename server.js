@@ -3,12 +3,40 @@ const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 const playwright = require('playwright');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const port = process.env.PORT || 10000;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Создаём папку uploads если её нет
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Раздаём статические файлы из uploads
+app.use('/uploads', express.static(uploadsDir));
+
+// Настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadsDir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB
+});
 
 function createSupabaseAdmin() {
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -808,6 +836,65 @@ app.post('/api/user', async (req, res) => {
         res.status(result.status).json(result.body);
     } catch (error) {
         console.error('User handler error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Endpoint для загрузки файлов фотоконтроля
+app.post('/upload-inspection', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const { rentalId, photoType } = req.body;
+
+        if (!rentalId || !photoType) {
+            // Удаляем загруженный файл если нет нужных параметров
+            fs.unlinkSync(req.file.path);
+            return res.status(400).json({ error: 'rentalId and photoType are required' });
+        }
+
+        // URL файла (доступен через твой сервер)
+        const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+
+        // Обновляем Supabase с URL файла
+        const supabaseAdmin = createSupabaseAdmin();
+        const { data: rental, error: fetchError } = await supabaseAdmin
+            .from('rentals')
+            .select('extra_data')
+            .eq('id', rentalId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        const updatedExtraData = {
+            ...rental.extra_data,
+            pre_rental_photos: {
+                ...rental.extra_data?.pre_rental_photos,
+                [photoType]: fileUrl
+            }
+        };
+
+        const { error: updateError } = await supabaseAdmin
+            .from('rentals')
+            .update({ extra_data: updatedExtraData })
+            .eq('id', rentalId);
+
+        if (updateError) throw updateError;
+
+        res.json({
+            success: true,
+            url: fileUrl,
+            filename: req.file.filename
+        });
+
+    } catch (error) {
+        console.error('Upload error:', error);
+        // Удаляем файл в случае ошибки
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
         res.status(500).json({ error: error.message });
     }
 });
