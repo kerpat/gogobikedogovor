@@ -854,64 +854,77 @@ app.post('/upload-inspection', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'rentalId and photoType are required' });
         }
 
-        const supabaseAdmin = createSupabaseAdmin();
-
-        // Читаем файл и загружаем в Supabase Storage
-        const fileBuffer = fs.readFileSync(req.file.path);
         const fileExt = path.extname(req.file.originalname);
         const fileName = `${rentalId}/${photoType}_${Date.now()}${fileExt}`;
+        const filePath = req.file.path;
+        const mimeType = req.file.mimetype;
 
-        // Загружаем в Supabase Storage
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-            .from('rental-inspections')
-            .upload(fileName, fileBuffer, {
-                contentType: req.file.mimetype,
-                upsert: true
-            });
-
-        if (uploadError) {
-            console.error('Supabase upload error:', uploadError);
-            throw uploadError;
-        }
-
-        // Получаем публичный URL
-        const { data: urlData } = supabaseAdmin.storage
-            .from('rental-inspections')
-            .getPublicUrl(fileName);
-
-        const fileUrl = urlData.publicUrl;
-
-        // Удаляем временный файл с Render
-        fs.unlinkSync(req.file.path);
-
-        // Обновляем Supabase с URL файла
-        const { data: rental, error: fetchError } = await supabaseAdmin
-            .from('rentals')
-            .select('extra_data')
-            .eq('id', rentalId)
-            .single();
-
-        if (fetchError) throw fetchError;
-
-        const updatedExtraData = {
-            ...rental.extra_data,
-            pre_rental_photos: {
-                ...rental.extra_data?.pre_rental_photos,
-                [photoType]: fileUrl
-            }
-        };
-
-        const { error: updateError } = await supabaseAdmin
-            .from('rentals')
-            .update({ extra_data: updatedExtraData })
-            .eq('id', rentalId);
-
-        if (updateError) throw updateError;
-
+        // СРАЗУ отвечаем клиенту - он не ждёт!
         res.json({
             success: true,
-            url: fileUrl,
+            message: 'File received, uploading to storage...',
             filename: fileName
+        });
+
+        // Загрузка в Supabase в фоне (клиент уже получил ответ)
+        setImmediate(async () => {
+            try {
+                const supabaseAdmin = createSupabaseAdmin();
+                
+                // Читаем файл и загружаем в Supabase Storage
+                const fileBuffer = fs.readFileSync(filePath);
+
+                const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+                    .from('rental-inspections')
+                    .upload(fileName, fileBuffer, {
+                        contentType: mimeType,
+                        upsert: true
+                    });
+
+                if (uploadError) {
+                    console.error('Supabase upload error:', uploadError);
+                    return;
+                }
+
+                // Получаем публичный URL
+                const { data: urlData } = supabaseAdmin.storage
+                    .from('rental-inspections')
+                    .getPublicUrl(fileName);
+
+                const fileUrl = urlData.publicUrl;
+
+                // Обновляем Supabase с URL файла
+                const { data: rental, error: fetchError } = await supabaseAdmin
+                    .from('rentals')
+                    .select('extra_data')
+                    .eq('id', rentalId)
+                    .single();
+
+                if (!fetchError) {
+                    const updatedExtraData = {
+                        ...rental.extra_data,
+                        pre_rental_photos: {
+                            ...rental.extra_data?.pre_rental_photos,
+                            [photoType]: fileUrl
+                        }
+                    };
+
+                    await supabaseAdmin
+                        .from('rentals')
+                        .update({ extra_data: updatedExtraData })
+                        .eq('id', rentalId);
+                }
+
+                console.log(`✅ Background upload completed: ${fileName}`);
+
+            } catch (bgError) {
+                console.error('Background upload error:', bgError);
+            } finally {
+                // Удаляем временный файл
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                }
+            }
         });
 
     } catch (error) {
