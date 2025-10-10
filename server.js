@@ -156,7 +156,7 @@ async function handleGetPendingContracts({ userId }) {
         throw new Error('Failed to fetch pending notifications: ' + error.message);
     }
 
-    return { status: 200, body: { notifications: data || [] } };
+    return { status: 200, body: { rentals: data || [] } };
 }
 
 async function handleGetContractDetails({ userId, rentalId }) {
