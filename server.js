@@ -850,16 +850,41 @@ app.post('/upload-inspection', upload.single('file'), async (req, res) => {
         const { rentalId, photoType } = req.body;
 
         if (!rentalId || !photoType) {
-            // Удаляем загруженный файл если нет нужных параметров
             fs.unlinkSync(req.file.path);
             return res.status(400).json({ error: 'rentalId and photoType are required' });
         }
 
-        // URL файла (доступен через твой сервер)
-        const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const supabaseAdmin = createSupabaseAdmin();
+
+        // Читаем файл и загружаем в Supabase Storage
+        const fileBuffer = fs.readFileSync(req.file.path);
+        const fileExt = path.extname(req.file.originalname);
+        const fileName = `${rentalId}/${photoType}_${Date.now()}${fileExt}`;
+
+        // Загружаем в Supabase Storage
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from('rental-inspections')
+            .upload(fileName, fileBuffer, {
+                contentType: req.file.mimetype,
+                upsert: true
+            });
+
+        if (uploadError) {
+            console.error('Supabase upload error:', uploadError);
+            throw uploadError;
+        }
+
+        // Получаем публичный URL
+        const { data: urlData } = supabaseAdmin.storage
+            .from('rental-inspections')
+            .getPublicUrl(fileName);
+
+        const fileUrl = urlData.publicUrl;
+
+        // Удаляем временный файл с Render
+        fs.unlinkSync(req.file.path);
 
         // Обновляем Supabase с URL файла
-        const supabaseAdmin = createSupabaseAdmin();
         const { data: rental, error: fetchError } = await supabaseAdmin
             .from('rentals')
             .select('extra_data')
@@ -886,12 +911,12 @@ app.post('/upload-inspection', upload.single('file'), async (req, res) => {
         res.json({
             success: true,
             url: fileUrl,
-            filename: req.file.filename
+            filename: fileName
         });
 
     } catch (error) {
         console.error('Upload error:', error);
-        // Удаляем файл в случае ошибки
+        // Удаляем временный файл в случае ошибки
         if (req.file && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
